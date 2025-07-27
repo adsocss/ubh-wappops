@@ -26,6 +26,11 @@
     "type-check:app": "bun run --cwd wappops-app ../node_modules/.bin/tsc --noEmit",
     "type-check:server": "bun run --cwd wappops-server ../node_modules/.bin/tsc --noEmit",
     "install:all": "bun install",
+    "version:sync": "bun scripts/sync-version.js",
+    "version:patch": "bun scripts/sync-version.js patch",
+    "version:minor": "bun scripts/sync-version.js minor",
+    "version:major": "bun scripts/sync-version.js major",
+    "version:set": "bun scripts/sync-version.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
