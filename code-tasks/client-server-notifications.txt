@@ -1,0 +1,48 @@
+* Goal: improve client/server notification system.
+
+* Info:
+  1. The tasks notifications received through the SignalR service are sent to Bun's pub/sub
+     native implementation and to different channels depending on the tasks center and department.
+     Prior to that, the server reads the full task information from the database. Note that
+     the tasks department is not present in the SignalR notification, only retreivieng the full
+     task information from the database can it be determined.
+  3. PWA client users are automatically subscribed to the appropiate channels according
+     to their authorizations (see IUser interface).
+  4. When the PWA receives a task notificationit proceeds as follows:
+     4.1 Saves a summary of the notification in the local database (dexie/indexeddb)
+         ,table/store "notifications". These are set to "unread" initially.
+     4.2 Creates or updates the task in the "tasks" table/store. 
+     4.3 Emits a sound and vibration (configurable by user via preferences save in localstorage).
+     4.4 The PWA has a visual component ("ubh-notifications-alert.ts") which is shown in header
+         as an icon, and next to it an indicator with the number of only unread notifications which
+         is updated in real time. On click on the icon it opens a side panel with all the received
+         notifications and there the user can set or unset each one as "read".
+     4.5 Tasks notification filters:
+         4.5.1 Primary and implicit: nor the signalR message nor the database has any clue about
+               which user updated a task (the creation user does exist as task information). This
+               poses the problem that users would receive their own updates notifications, which is,
+               at least, annoying and can even confuse them. This is avoided in the client application
+               by the more general criteria of comparing the received task data with the one stored
+               in the database. If equal, no notification is created and no task update takes place.
+        4.5.2 Preferences: users can set which notifications departments shoud emit sound a vibration
+              alerts. Let me stress that this filter does NOT prevent notifications from being recorded
+              nor tasks from being created or updated.
+     4.6 Notifications with more than 24h of being received are removed by a periodic task. 
+   5. This is working fine but with some caveats exposed in the next "Problems" on mobile devices.
+  
+* Problems:
+    1. When the device enters sleep mode, the websocket connection is closed and no notifications
+       can be received.
+    2. Once the PWA app is intalled on the device, users tend to launch it from the "desktop" panel
+       instead of searching if it is already opened an focus it. Apart from other issues with multiple
+       instances, opening a second instance and trying to operate when working offline fails to start
+       properly because it can't verify the auth token.
+
+* Some ideas:
+    1. Replace the whole client/server notifications system with push notifications adapting the
+       server pub/sub and channels behaviour. The signalR service should NOT be modified unless
+       strictly necessary,
+    2. Don't use browser native notifications vindows/messages. The implemented visual component
+       should suffice.
+    3. Push notifications payloads are limited to around 4k but tasks data can be far bigger than that,
+       so perhaps a two phase strategy could be the best aproach to overcome this limitation.

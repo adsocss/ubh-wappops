@@ -283,6 +283,7 @@ export default class UbhShell extends LitElement {
 
     connectedCallback(): void {
         super.connectedCallback();
+        
         this.setTheme();
         window.addEventListener("hashchange", this.handleNavigation.bind(this));
         document.addEventListener(EVT_LOGOUT, this.handleLogout.bind(this));
@@ -295,6 +296,7 @@ export default class UbhShell extends LitElement {
 
     disconnectedCallback(): void {
         super.disconnectedCallback();
+        
         window.removeEventListener("hashchange", this.handleNavigation);
         document.removeEventListener(EVT_LOGOUT, this.handleLogout);
         document.removeEventListener(EVT_SYNC_STARTED, this.syncStarted);
