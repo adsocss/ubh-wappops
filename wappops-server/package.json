@@ -1,0 +1,25 @@
+{
+  "name": "wappops-server",
+  "version": "0.7.0-beta",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --hot src/application/server/server.ts",
+    "build-win": "bun build --target=bun -e sqlite3 -e better-sqlite3 -e mysql2 -e mysql -e pg -e pg-query-stream -e oracledb --compile --target=bun-windows-x64 ./src/application/server/server.ts --outfile ./dist/ops-server-win32.exe",
+    "build-linux": "bun build --target=bun -e sqlite3 -e better-sqlite3 -e mysql2 -e mysql -e pg -e pg-query-stream -e oracledb --compile --target=bun-linux-x64 ./src/application/server/server.ts --outfile ./dist/ops-server-linux",
+    "build-linux-old": "bun build --target=bun -e pg -e pg-query-stream -e *sqlite3 -e oracledb -e mysql* --compile --target=bun-linux-x64 ./src/application/server/server.ts --outfile ./dist/ops-server-linux"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node-fetch": "^2.6.12",
+    "@types/ws": "^8.18.1"
+  },
+  "dependencies": {
+    "jose": "^6.0.11",
+    "knex": "^3.1.0",
+    "mssql": "^11.0.1",
+    "sql-formatter": "^15.6.6",
+    "tarn": "^3.0.2"
+  }
+}

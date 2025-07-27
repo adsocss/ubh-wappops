@@ -1,0 +1,13 @@
+import { css } from "lit";
+
+export const resetStyles = css`
+*
+, *::before
+, *::after {
+	box-sizing: border-box;
+	-webkit-box-sizing: border-box; 
+    -moz-box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+`;

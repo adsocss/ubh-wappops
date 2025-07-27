@@ -1,0 +1,16 @@
+Versión 0.6.0-beta - 22/6/2025
+----------------------------------------------------------------------------------------------------
+* Correcciones:
+    - Las peticiones .../api/login/validate positivas no se estaban registrando en el log. 
+
+* Nuevo:
+    - Añadido enpoint de logout. En esta versión, su única función es la de registrar en el log
+      esta operación.
+
+Versión 0.7.0-beta - 30/6/2025
+---------------------------------------------------------------------------------------------------- 
+Nuevo:
+    - Nuevo servicio de notificaciones de tareas tipo pub/sub con canales por centro y departamento
+      vía WebSockets y SignalR por la parte de la API del PMS.
+    - Implementaciónn desde cero del cliente de SignalR prescindiendo de la librería de Microsoft.
+      Cortesía de GitHub Copilot.

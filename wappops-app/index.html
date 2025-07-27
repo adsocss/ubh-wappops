@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UBH Operaciones</title>
+  <link rel="stylesheet" href="/src/index.css" />
+
+  <script type="module" src="/src/components/app/ubh-shell"></script>
+</head>
+
+<style>
+  html.theme-dark {
+    background-color: hsl(240 5.3% 26.1%);
+    color: white;
+  }
+
+  #startup {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+    /* background-color: #fff; */
+  }
+
+  #startup img {
+    width: 200px;
+    height: 200px;
+  }
+</style>
+
+<body>
+  <div id="startup">
+    <img src="pwa-512x512.png" alt="UBH Logo" />
+    <span>UBH Operaciones</span>
+    <progress id="progress-bar" aria-label="Cargando aplicación"></progress>
+  </div>
+  <ubh-shell style="display: none;"></ubh-shell>
+
+  <script>
+    const html = document.documentElement;
+    html.classList.remove("theme-light", "theme-dark");
+
+    const lsConfig = localStorage.getItem("wappops-client-config");
+    if (lsConfig) {
+      try {
+        const config = JSON.parse(lsConfig);
+        const theme = config?.preferences?.theme || "light";
+        html.classList.add(`theme-${theme}`);
+      } catch (_error) {
+        // Ignorar. Se adpotarán valores por defecto.
+      }
+    }
+
+    addEventListener("DOMContentLoaded", (event) => {
+      const startup = document.getElementById("startup");
+      const shell = document.querySelector("ubh-shell");
+      html.classList.remove("theme-light", "theme-dark");
+
+      setTimeout(() => {
+        startup.style.display = "none";
+        shell.style.display = "block";
+      }, 2000);
+    })
+  </script>
+</body>
+
+</html>

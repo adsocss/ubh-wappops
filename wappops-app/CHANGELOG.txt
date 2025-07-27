@@ -1,0 +1,28 @@
+Versión 0.6.0-beta - 22/6/2025
+----------------------------------------------------------------------------------------------------
+* Correcciones:
+    - El logout no estaba funcionando correctamente.
+    - Después de un logout sin conexión de red, la pantalla de Login aparecía desbloqueada.
+
+* Nuevo:
+    - Añadida información de reservas en tareas y estados de habitaciones.
+    - Añadido envío del evento de logout al servidor.
+
+Versión 0.6.1-beta - 24/6/2025
+----------------------------------------------------------------------------------------------------    
+* Nuevo: soporte especial para usuarios con acceso general a todos los centros.
+  - Lista de tareas: el filtro de centro por defecto es el primero por orden de código.
+  - Configuración lista de tareas: estos usuario solo podrán seleccionar un centro en el filtro.
+  - Lista de habitaciones: el filtro de centro por defecto es el primero por orden de código.
+  - Configuración lista de habitaciones: estos usuario solo podrán seleccionar un centro en el filtro.
+
+Versión 0.7.0-beta - 30/6/2025
+----------------------------------------------------------------------------------------------------    
+* Correcciones:
+    - En las "tarjetas" de tareas de la lista, si no hay descripción, se visualiza el nombre del
+      tipo de tarea.
+
+* Nuevo:
+    - Añadido filtro de centro a la lista de contadores.
+    - Añadida configuración de preferencias.
+    - Añadida funcionalidad completa de notificaciones de tareas.
