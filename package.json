@@ -26,6 +26,9 @@
     "type-check:app": "bun run --cwd wappops-app ../node_modules/.bin/tsc --noEmit",
     "type-check:server": "bun run --cwd wappops-server ../node_modules/.bin/tsc --noEmit",
     "install:all": "bun install",
+    "version:sync": "node -e \"const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json')); ['wappops-app','wappops-server'].forEach(dir=>{const subPkg=JSON.parse(fs.readFileSync(dir+'/package.json')); subPkg.version=pkg.version; fs.writeFileSync(dir+'/package.json', JSON.stringify(subPkg,null,2)+'\\n');})\"",
+    "version:update": "npm version --no-git-tag-version",
+    "version:set": "node scripts/sync-version.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
