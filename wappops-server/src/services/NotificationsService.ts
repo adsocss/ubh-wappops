@@ -31,7 +31,7 @@ export class NotificationsService {
     constructor(ctx: IApiContext, server: Server) {
         this.server = server;
         this.ctx = ctx;
-        this.pmsTasksNotificationsService = new BunGuestAPITasksNotifications(ctx.configuration, ctx.services.pmsAPIClient);
+        this.pmsTasksNotificationsService = new BunGuestAPITasksNotifications(ctx.configuration, ctx.services.pmsAPIClient, ctx.services.logger);
         this.pmsTasksNotificationsService.emitter.on('notification', this.handleTasksNotification.bind(this));
         
         // Limpeza periódica de la caché de notificaciones
@@ -140,7 +140,7 @@ export class NotificationsService {
             }
 
         } catch (error) {
-            this.ctx.services.logger.error(error as Error);
+            this.ctx.services.logger.logError(error as Error, 'NOTIFICATIONS');
             return;
         }
     }

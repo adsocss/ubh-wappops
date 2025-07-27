@@ -63,7 +63,7 @@ export async function countersRecordsHandler(request: Request, server: Server, c
         const user = await getRequestUser(request, ctx);
 
         // Registrar petición en el log
-        ctx.services.logger.info(createRequestLogRecord(server, request, user?.username));
+        ctx.services.logger.logInfo(createRequestLogRecord(server, request, user?.username));
 
         const record = await request.json() as ICounterRecord;
         if (!record) {
@@ -102,7 +102,7 @@ export async function roomStatusHandler(request: Request, server: Server, ctx: I
     const user = await getRequestUser(request, ctx);
 
     // Registrar petición en el log
-    ctx.services.logger.info(createRequestLogRecord(server, request, user?.username));
+    ctx.services.logger.logInfo(createRequestLogRecord(server, request, user?.username));
 
     const room = await request.json() as IRoom;
     if (!room) {
@@ -141,7 +141,7 @@ export async function tasksHandler(request: Request, server: Server, ctx: IApiCo
         const user = await getRequestUser(request, ctx);
 
         // Registrar petición en el log
-        ctx.services.logger.info(createRequestLogRecord(server, request, user?.username));
+        ctx.services.logger.logInfo(createRequestLogRecord(server, request, user?.username));
 
         // Usa la petición del cliente tal cual, cosa que implica que el cliente, por
         // su parte, debe usar el formato de datos de la API del PMS en el envío.
@@ -163,7 +163,7 @@ export async function tasksHandler(request: Request, server: Server, ctx: IApiCo
         const user = await getRequestUser(request, ctx);
 
         // Registrar petición en el log
-        ctx.services.logger.info(createRequestLogRecord(server, request, user?.username));
+        ctx.services.logger.logInfo(createRequestLogRecord(server, request, user?.username));
 
         // Usa la petición del cliente tal cual, cosa que implica que éste, por
         // su parte, debe usar el formato de datos de la API del PMS en el envío.
@@ -256,7 +256,7 @@ async function find(request: Request, server: Server, ctx: IApiContext, reposito
     const user = await getRequestUser(request, ctx);
 
     // Registrar petición en el log (solo dev)
-    // ctx.services.logger.info(createRequestLogRecord(server, request, user?.username));
+    // ctx.services.logger.logInfo(createRequestLogRecord(server, request, user?.username));
 
     const page = parseRequestPage(request) as IResultSetPage<any, any>;
     const result = await repository.findAll(user, page);

@@ -29,7 +29,12 @@ const devLogsPath = '../ztest/logs';
 // --------------------------------------------------------------------------------
 
 // Iniciar servicio de logging
-const logger = new Logger(devMode ? devLogsPath : undefined);
+const logger = new Logger(devMode ? devLogsPath : undefined, {
+    isDevelopment: devMode,
+    enableColors: devMode,
+    logLevel: devMode ? 0 : 1, // DEBUG in dev, INFO in production
+    component: 'SERVER'
+});
 
 // Ruta por defecto de los archivos estáticos (la App cliente de Operaciones debe estar aquí).
 const DEFAULT_STATIC_FILES_PATH = devMode ? devPublicPath : './public';
@@ -46,7 +51,7 @@ try {
     }
 } catch (error) {
     // Registrar error en el log y finalizar la aplicación.
-    logger.error(error as Error);
+    logger.logError(error as Error);
     await logger.flushQueue();
     console.error((error as Error).message);
     process.exit(1);
@@ -62,7 +67,7 @@ configLog.pms.ws.forEach((wsc: any) => {
     wsc.password = '*******';
 });
 
-logger.info(configLog);
+logger.logInfo(configLog);
 
 // Obtener archivos tls
 let certFile = configuration.security?.tls?.certificateFile ? Bun.file(configuration.security.tls.certificateFile) : undefined;
@@ -133,7 +138,7 @@ const server = Bun.serve({
 
             if (path === '/api/logout') {
                 const user = await getRequestUser(request, context);
-                logger.info(createRequestLogRecord(server, request, user?.username));
+                logger.logInfo(createRequestLogRecord(server, request, user?.username));
                 response = new Response(null, { status: 200, statusText: 'OK' });
             }
 
@@ -224,14 +229,14 @@ const server = Bun.serve({
         } catch (error) {
             if (error instanceof AuthorizationException) {
                 if (path === '/api/login/validate') {
-                    logger.warning(createRequestLogRecord(server, request, error.username));
+                    logger.logWarning(createRequestLogRecord(server, request, error.username));
                 } else {
-                    logger.error(createRequestLogRecord(server, request, error.username));
+                    logger.logError(createRequestLogRecord(server, request, error.username));
                 }
 
                 response = new Response(null, { status: 401, statusText: 'Unauthorized' });
             } else {
-                logger.error(error as Object);
+                logger.logError(error as Object);
 
                 response = new Response(null, { status: 500, statusText: 'Internal Server Error' });
             }

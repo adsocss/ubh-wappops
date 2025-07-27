@@ -64,7 +64,7 @@ export async function loginHandler(request: Request, server: Server, ctx: IApiCo
     user.authorizations.token = token;
 
     // Registrar login
-    ctx.services.logger.info(createRequestLogRecord(server, request, user.username));
+    ctx.services.logger.logInfo(createRequestLogRecord(server, request, user.username));
 
     const response = new Response(JSON.stringify(user));
     response.headers.append("Access-Control-Allow-Headers",'*');

@@ -1,0 +1,57 @@
+* Goal: improve server signalR connection resilience.
+
+* Info:
+    1. Current implementation in "BunSignalRClient.ts".
+    2. This signalR client needs a valid authorization token from the external PMS API,
+       both, for initial connection and further reconnections. 
+    3. API tokens are obtained from the external API. "GuestAPIClient.ts" handles the
+       calls and takes care of obtaining tokens through login when necessary an refresh. 
+       For this to work it keeps users credentials in memory after ther login (not to be 
+       confused with the external API login) or validate.
+    4. To keep things working between server restarts GuestAPIClient should persist users credentials.
+
+* Status: COMPLETED ✓
+
+* Implemented Improvements:
+
+## Short-term Reconnection Strategies ✓:
+  - Immediate retry logic (3 attempts with exponential backoff: 2s → 4s → 8s, max 30s)
+  - Token expiry detection and proactive refresh (5-minute threshold)
+  - Automatic SignalR reconnection with escalating delays
+  - Connection state monitoring and attempt tracking
+
+## Long-term Reconnection Strategies ✓:
+  - **Circuit Breaker Pattern**: Protects against cascading failures
+    * CLOSED → OPEN → HALF_OPEN states
+    * Failure threshold: 5 failures
+    * Recovery timeout: 1 minute
+  - **Exponential Backoff**: Progressive delay increases (1.5x multiplier, max 5 minutes)
+  - **Health Monitoring**: Continuous API health checks every 30 seconds
+  - **Failure Pattern Analysis**: Tracks connection failures over 5-minute windows
+  - **Long-term Recovery Strategy**: Handles persistent connection issues beyond normal reconnection
+
+## GuestAPIClient Enhancements:
+  - Circuit breaker integration across all API operations
+  - Health monitoring with automatic circuit breaker recovery
+  - Enhanced error handling and comprehensive logging
+  - Exponential backoff for login retries
+  - Token refresh with circuit breaker protection
+  - Resource cleanup (destroy method)
+
+## BunGuestAPITasksNotifications Enhancements:
+  - Long-term reconnection strategy with progressive backoff
+  - Connection failure tracking and pattern analysis
+  - API health verification before reconnection attempts
+  - Comprehensive connection statistics and monitoring
+  - Integration with circuit breaker state reporting
+  - Persistent failure pattern detection
+
+## Resilience Features Summary:
+  ✅ **Immediate Recovery** (0-30 seconds): Token refresh, retry logic
+  ✅ **Short-term Recovery** (30 seconds - 5 minutes): Automatic reconnection
+  ✅ **Long-term Recovery** (5+ minutes): Circuit breaker, health monitoring, exponential backoff
+  ✅ **Failure Protection**: Circuit breaker prevents cascade failures
+  ✅ **Observability**: Comprehensive metrics and event emission for monitoring
+  ✅ **Self-healing**: Automatic recovery when API health is restored
+    
+
