@@ -51,6 +51,7 @@ export interface HubConnectionOptions {
     accessTokenFactory?: () => Promise<string>;
     reconnectIntervals?: number[];
     pingInterval?: number;
+    pingTimeout?: number;
     debug?: boolean;
 }
 
@@ -68,6 +69,8 @@ export class BunHubConnection extends EventEmitter {
     private pingTimer: Timer | null = null;
     private reconnectTimer: Timer | null = null;
     private messageHandlers: Map<string, Function[]> = new Map();
+    private lastPingTime: number = 0;
+    private pingTimeoutTimer: Timer | null = null;
 
     constructor(url: string, options: HubConnectionOptions = {}) {
         super();
@@ -75,6 +78,7 @@ export class BunHubConnection extends EventEmitter {
         this.options = {
             reconnectIntervals: [0, 2000, 10000, 30000],
             pingInterval: 15000,
+            pingTimeout: 30000,
             debug: false,
             ...options
         };
@@ -97,7 +101,17 @@ export class BunHubConnection extends EventEmitter {
             throw new Error(`Cannot start connection in state: ${this.state}`);
         }
 
+        // Reset reconnection attempts when manually starting
+        this.resetReconnectionAttempts();
         return this.connect();
+    }
+
+    /**
+     * Reset reconnection attempts counter
+     */
+    public resetReconnectionAttempts(): void {
+        this.reconnectAttempts = 0;
+        this.debugLog('Reconnection attempts counter reset');
     }
 
     /**
@@ -383,8 +397,11 @@ export class BunHubConnection extends EventEmitter {
                 break;
 
             case MessageType.Ping:
-                // Send pong response
+                // This is a ping from server, send pong response
+                this.debugLog('Received ping from server, sending pong');
                 this.sendMessage({ type: MessageType.Ping });
+                // Also treat this as a pong to our own ping (bidirectional keep-alive)
+                this.handlePong();
                 break;
 
             case MessageType.Close:
@@ -438,6 +455,7 @@ export class BunHubConnection extends EventEmitter {
             }, delay);
         } else {
             console.log('SignalR max reconnection attempts reached');
+            this.emit('reconnectionExhausted');
         }
     }
 
@@ -446,11 +464,55 @@ export class BunHubConnection extends EventEmitter {
      */
     private startPing(): void {
         if (this.options.pingInterval && this.options.pingInterval > 0) {
+            this.debugLog(`Starting ping timer with interval: ${this.options.pingInterval}ms`);
             this.pingTimer = setInterval(() => {
                 if (this.state === ConnectionState.Connected) {
-                    this.sendMessage({ type: MessageType.Ping });
+                    this.sendPing();
                 }
             }, this.options.pingInterval);
+        }
+    }
+
+    /**
+     * Send ping and start timeout monitoring
+     */
+    private sendPing(): void {
+        this.lastPingTime = Date.now();
+        this.debugLog('Sending ping to server');
+        this.sendMessage({ type: MessageType.Ping });
+        
+        // Start ping timeout monitoring
+        if (this.options.pingTimeout && this.options.pingTimeout > 0) {
+            this.pingTimeoutTimer = setTimeout(() => {
+                this.debugLog('Ping timeout detected - connection may be dead');
+                console.warn('SignalR ping timeout - forcing reconnection');
+                this.handlePingTimeout();
+            }, this.options.pingTimeout);
+        }
+    }
+
+    /**
+     * Handle ping timeout - indicates connection is likely dead
+     */
+    private handlePingTimeout(): void {
+        this.debugLog('Ping timeout occurred, forcing disconnection');
+        if (this.ws) {
+            this.ws.close(1000, 'Ping timeout');
+        }
+    }
+
+    /**
+     * Handle received pong from server
+     */
+    private handlePong(): void {
+        const now = Date.now();
+        const latency = now - this.lastPingTime;
+        this.debugLog(`Received pong from server, latency: ${latency}ms`);
+        
+        // Clear ping timeout
+        if (this.pingTimeoutTimer) {
+            clearTimeout(this.pingTimeoutTimer);
+            this.pingTimeoutTimer = null;
         }
     }
 
@@ -461,6 +523,10 @@ export class BunHubConnection extends EventEmitter {
         if (this.pingTimer) {
             clearInterval(this.pingTimer);
             this.pingTimer = null;
+        }
+        if (this.pingTimeoutTimer) {
+            clearTimeout(this.pingTimeoutTimer);
+            this.pingTimeoutTimer = null;
         }
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
@@ -500,6 +566,22 @@ export class BunHubConnectionBuilder {
      */
     withDebug(enabled: boolean = true): this {
         this.options.debug = enabled;
+        return this;
+    }
+
+    /**
+     * Configure ping interval for keep-alive (in milliseconds)
+     */
+    withPingInterval(intervalMs: number): this {
+        this.options.pingInterval = intervalMs;
+        return this;
+    }
+
+    /**
+     * Configure ping timeout for disconnection detection (in milliseconds)
+     */
+    withPingTimeout(timeoutMs: number): this {
+        this.options.pingTimeout = timeoutMs;
         return this;
     }
 
