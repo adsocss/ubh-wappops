@@ -89,7 +89,8 @@ export default class UbhShell extends LitElement {
         try {
             await this.ctx.synchronizer.syncAll();
             this.ctx.synchronizer.startPeriodicTask();
-            this.ctx.notifications?.connect();
+            // Initialize Web Push notifications
+            await this.ctx.webPush?.initialize();
         } catch (error) {
             throw error;
         } finally {
@@ -128,7 +129,6 @@ export default class UbhShell extends LitElement {
             this.autoLoginDone = true;
             await this.ctx.synchronizer.syncAll();
             this.ctx.synchronizer.startPeriodicTask();
-            this.ctx.notifications?.connect();
         } catch (error) {
             // Si hay error, se asume que la sesión ha caducado
             this.logout();
@@ -161,7 +161,6 @@ export default class UbhShell extends LitElement {
 
     /* Cerrar sesión */
     private logout() {
-        this.ctx.notifications?.disconnect();
         this.ctx.api.logout();
         this.closeMenu();
         this.ctx.currentUser = undefined;

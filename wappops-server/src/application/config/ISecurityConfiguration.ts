@@ -6,4 +6,9 @@ export interface ISecurityConfiguration {
         certificateFile: string
         privateKeyFile: string
     }
+    vapid?: {
+        publicKey: string
+        privateKey: string
+        subject: string
+    }
 }

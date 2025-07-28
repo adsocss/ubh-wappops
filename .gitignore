@@ -74,9 +74,14 @@ coverage/
 # PWA assets
 public/pwa-*
 
+# Environment configuration
+.env
+.env.local
+
 # Temporary files
 .tmp/
 temp/
 
 # Session persistence data
 data/api-sessions.json
+api-sessions.json

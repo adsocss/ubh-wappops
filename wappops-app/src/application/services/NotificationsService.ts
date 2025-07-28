@@ -1,5 +1,5 @@
 import { DEFAULT_CLIENT_CONFIGURATION } from "../model/IClientConfiguration";
-import { INotification, ISubscriptionMessage, ITask } from "../../../../wappops-server/src/model/data-model";
+import { INotification, ITask } from "../../../../wappops-server/src/model/data-model";
 import { CLIENT_CONFIG_KEY } from "../local-storage-keys";
 import { Wappops } from "../wappops";
 import { remapTask } from "./synchronizer";
@@ -9,171 +9,26 @@ export const EVT_NOTIFICATION = "ubh-notification";
 
 export class NotificationsService {
     private ctx: Wappops;
-    private wsConnection: WebSocket | undefined;
-    private url: string;
 
     /**
      * Constructor del servicio de notificaciones.
      * @param { Wappops } ctx - Contexto de la aplicación.
      */
     constructor(ctx: Wappops) {
-        console.log('🔔 [CLIENT] Initializing NotificationsService');
-        
-        // Handle empty API URL (when using Vite proxy in development)
-        let apiUrl = ctx.apiUrl;
-        if (!apiUrl) {
-            // If API URL is empty (Vite proxy), use current window location for WebSocket
-            apiUrl = window.location.origin;
-        }
-        
-        const _apiUrl = new URL(apiUrl);
-        const protocol = _apiUrl.protocol === "https:" ? "wss" : "ws";
-        this.url = `${protocol}://${_apiUrl.host}`;
-        
-        console.log(`🔔 [CLIENT] WebSocket URL will be: ${this.url}`);
-        console.log(`🔔 [CLIENT] API URL: ${apiUrl}`);
-        console.log(`🔔 [CLIENT] Protocol: ${protocol}`);
+        console.log('🔔 [CLIENT] Initializing NotificationsService (Web Push mode)');
         
         this.ctx = ctx;
         this.cleanUp();
-
-        // Reconectar al WebSocket del servidor de notificaciones si se
-        // ha perdido la conexión de red cuando ésta se recupera.
-        window.addEventListener("online", () => {
-            console.log('🔔 [CLIENT] Network came back online - attempting reconnection');
-            this.reconnect();
-        });
         
         console.log('🔔 [CLIENT] NotificationsService initialized');
     }
 
     /**
-     * Determina si el WebSocket está conectado.
-     * @returns { boolean } true si está conectado, false en caso contrario.
+     * Process a received notification
+     * Called by the Service Worker via postMessage when push notification is received
+     * @param notification - The notification data to process
      */
-    public get connected(): boolean {
-        return this.wsConnection !== undefined && this.wsConnection.readyState === WebSocket.OPEN;
-    }
-
-    /**
-     * Conecta el WebSocket al servidor de notificaciones.
-     */
-    public connect() {
-        console.log(`🔔 [CLIENT] Attempting to connect WebSocket to: ${this.url}`);
-        
-        if (!this.wsConnection) {
-            console.log('🔔 [CLIENT] Creating new WebSocket connection');
-            this.wsConnection = new WebSocket(this.url);
-
-            this.wsConnection.onopen = () => {
-                console.log('🔔 [CLIENT] ✅ WebSocket connection opened successfully');
-                this.subscribe();
-            };
-
-            this.wsConnection.onclose = (event) => {
-                console.warn(`🔔 [CLIENT] ❌ WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}, Clean: ${event.wasClean}`, new Date().toISOString());
-                this.unsubscribe();
-                this.wsConnection = undefined;
-            };
-
-            this.wsConnection.onerror = (error) => {
-                console.error('🔔 [CLIENT] ❌ WebSocket error:', error);
-            };
-
-            this.wsConnection.onmessage = (event) => {
-                console.log('🔔 [CLIENT] 📨 Received message:', event.data);
-                try {
-                    const notification: INotification = JSON.parse(event.data);
-                    console.log('🔔 [CLIENT] 📨 Parsed notification:', notification);
-                    this.handleNotification(notification);
-                } catch (error) {
-                    console.error('🔔 [CLIENT] ❌ Failed to parse notification message:', error);
-                    console.error('🔔 [CLIENT] ❌ Raw message data:', event.data);
-                }
-            }
-        } else {
-            console.log('🔔 [CLIENT] WebSocket connection already exists, current state:', this.wsConnection.readyState);
-        }
-    }
-
-    /**
-     * Desconecta el WebSocket si está conectado.
-     */
-    public disconnect() {
-        console.log('🔔 [CLIENT] Disconnecting WebSocket');
-        if (this.wsConnection) {
-            this.unsubscribe();
-            this.wsConnection.close();
-            console.log('🔔 [CLIENT] WebSocket disconnected');
-        } else {
-            console.log('🔔 [CLIENT] No WebSocket connection to disconnect');
-        }
-    }
-
-    /**
-     * Reconecta el WebSocket al servidor de notificaciones
-     * si se ha desconectado.
-     */
-    private reconnect() {
-        console.log("🔔 [CLIENT] Attempting to reconnect to notifications service...");
-
-        if (!this.connected) {
-            console.log("🔔 [CLIENT] WebSocket not connected, initiating reconnection");
-            this.disconnect();
-            this.connect();
-        } else {
-            console.log("🔔 [CLIENT] WebSocket already connected, no reconnection needed");
-        }
-    }
-
-    /*
-     * Suscribir al servicio del servidor
-     * Los canales a los que se suscribe el usuario se determinan en el servidor
-     * en función de sus roles.
-     */
-    private subscribe() {
-        console.log('🔔 [CLIENT] Attempting to subscribe to notifications');
-        
-        if (!(this.connected && this.ctx.currentUser)) {
-            console.warn('🔔 [CLIENT] ❌ Cannot subscribe - WebSocket not connected or no current user');
-            console.log('🔔 [CLIENT] - Connected:', this.connected);
-            console.log('🔔 [CLIENT] - Current user:', !!this.ctx.currentUser);
-            return;
-        }
-
-        const subscriptionMessage: ISubscriptionMessage = {
-            type: "subscribe",
-            user: this.ctx.currentUser,
-        };
-        
-        console.log('🔔 [CLIENT] Sending subscription message:', subscriptionMessage);
-        this.wsConnection?.send(JSON.stringify(subscriptionMessage));
-        console.log('🔔 [CLIENT] ✅ Subscription message sent');
-    }
-
-    /**
-     * Cancela las suscripciones del usuario en el servicio del servidor.
-     */
-    private unsubscribe() {
-        console.log('🔔 [CLIENT] Attempting to unsubscribe from notifications');
-        
-        if (!(this.connected && this.ctx.currentUser)) {
-            console.log('🔔 [CLIENT] Cannot unsubscribe - WebSocket not connected or no current user');
-            return;
-        }
-
-        const unsubscriptionMessage: ISubscriptionMessage = {
-            type: "unsubscribe",
-            user: this.ctx.currentUser,
-        };
-        
-        console.log('🔔 [CLIENT] Sending unsubscription message:', unsubscriptionMessage);
-        this.wsConnection?.send(JSON.stringify(unsubscriptionMessage));
-        console.log('🔔 [CLIENT] ✅ Unsubscription message sent');
-    }
-
-    /* Tratar notificación seleccionando la acción ulterior en función de su tipo (topic) */
-    private handleNotification(notification: INotification) {
+    public handleNotification(notification: INotification) {
         console.log('🔔 [CLIENT] 📬 Handling notification:', notification);
         
         notification.timestamp = new Date(notification.timestamp || Date.now());

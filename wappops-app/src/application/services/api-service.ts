@@ -113,6 +113,34 @@ export class ApiService {
         return true;
     }
 
+    /**
+     * Generic GET request
+     * @param endpoint - API endpoint (without leading slash)
+     * @param options - Additional fetch options
+     * @returns Promise with response data
+     */
+    public async get(endpoint: string, options: RequestInit = {}): Promise<any> {
+        return this._apiFetch(endpoint, {
+            method: "GET",
+            ...options,
+        });
+    }
+
+    /**
+     * Generic POST request
+     * @param endpoint - API endpoint (without leading slash)
+     * @param data - Data to send in request body
+     * @param options - Additional fetch options
+     * @returns Promise with response data
+     */
+    public async post(endpoint: string, data?: any, options: RequestInit = {}): Promise<any> {
+        return this._apiFetch(endpoint, {
+            method: "POST",
+            body: data ? JSON.stringify(data) : undefined,
+            ...options,
+        });
+    }
+
     public fetchCenters(page: IResultSetPage<ICenter, number> = DEFAULT_RESULT_PAGE): Promise<ICenter[]> {
         return this._apiFetchPage<ICenter>(`api/centers`, page);
     }
@@ -325,7 +353,9 @@ export class ApiService {
 
         options.headers = { ...headers, ...options.headers };
 
-        const requestUrl = `${this._apiUrl}/${endpoint}`;
+        // Handle leading slash to avoid double slashes in URL
+        const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+        const requestUrl = `${this._apiUrl}/${cleanEndpoint}`;
 
         try {
             const response = await fetch(requestUrl, options);

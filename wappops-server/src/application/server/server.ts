@@ -1,4 +1,3 @@
-import type { ServerWebSocket } from "bun";
 import { GuestAPIClient } from "../../services/GuestAPIClient";
 import { NOTIFICATIONS_SERVICE_NAME, NotificationsService } from "../../services/NotificationsService";
 import { PMSDatabase } from "../../services/PMSDatabase";
@@ -16,16 +15,23 @@ import {
     workTimesHandler
 } from "../api/data-handlers";
 import { handleStatus } from "../api/status-handler";
+import { WebPushAPI } from "../api/WebPushAPI";
 import { AuthorizationException } from "../auth/AuthorizationException";
 import type { IApplicationConfiguration } from "../config/IAplicationConfiguration";
-import type { ISubscriptionMessage } from "../notifications/INotification";
 import { getCmdArguments, readConfiguration } from "./lib";
 
-// Modo de operación del servidor para desarrollo. --------------------------------
-const devMode = true; // Cambiar a false para producción
-const devConfigPath = '../ztest';
-const devPublicPath = '../ztest/public';
-const devLogsPath = '../ztest/logs';
+// Configuración del servidor basada en variables de entorno. ----------------------
+const devMode = process.env.NODE_ENV !== 'production'; // Auto-detect based on NODE_ENV
+const devConfigPath = process.env.WAPPOPS_CONFIG_PATH || '../ztest';
+const devPublicPath = process.env.WAPPOPS_PUBLIC_PATH || '../ztest/public';
+const devLogsPath = process.env.WAPPOPS_LOGS_PATH || '../ztest/logs';
+
+// Log environment configuration for debugging
+console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`Dev Mode: ${devMode}`);
+console.log(`Config Path: ${devConfigPath}`);
+console.log(`Public Path: ${devPublicPath}`);
+console.log(`Logs Path: ${devLogsPath}`);
 // --------------------------------------------------------------------------------
 
 // Iniciar servicio de logging
@@ -81,13 +87,28 @@ if (!(certFile && keyFile)) {
 const pmsDatabase = new PMSDatabase(configuration);
 const apiClient = new GuestAPIClient(configuration, logger);
 
-// Inicializar contexto para las peticiones a la API.
+// Inicializar contexto temporal para crear el servicio de notificaciones.
+const tempContext: IApiContext = {
+    configuration: configuration,
+    services: {
+        pmsAPIClient: apiClient,
+        pmsDatabase: pmsDatabase,
+        logger: logger,
+        notifications: null as any // Temporal, se asignará después
+    }
+}
+
+// Crear servicio de notificaciones
+const notificationsService = new NotificationsService(tempContext);
+
+// Actualizar contexto con el servicio de notificaciones completo
 const context: IApiContext = {
     configuration: configuration,
     services: {
         pmsAPIClient: apiClient,
         pmsDatabase: pmsDatabase,
-        logger: logger
+        logger: logger,
+        notifications: notificationsService
     }
 }
 
@@ -103,13 +124,6 @@ const server = Bun.serve({
     async fetch(request, server) {
         const url = new URL(request.url);
         const path = url.pathname;
-
-
-        // Websockets
-        if (server.upgrade(request)) {
-            console.log('ws upgrade', request)
-            return undefined;
-        }
 
         // Respuesta por defecto
         let response = new Response(null, { status: 404, statusText: 'Not Found' });
@@ -226,6 +240,36 @@ const server = Bun.serve({
                 }
             }
 
+            // Notifications - Web Push API
+            if (path.startsWith('/api/notifications/push')) {
+                // VAPID public key (no authentication required for client setup)
+                if (path === '/api/notifications/push/vapid-key' && request.method === 'GET') {
+                    response = await WebPushAPI.getVapidKey(context);
+                }
+                // Debug endpoint (development only)
+                else if (path === '/api/notifications/push/debug' && request.method === 'GET') {
+                    response = await WebPushAPI.getDebugInfo(context);
+                }
+                // Subscription management (authentication required)
+                else {
+                    const user = await getRequestUser(request, context);
+                    if (user) {
+                        if (path === '/api/notifications/push/subscribe' && request.method === 'POST') {
+                            response = await WebPushAPI.subscribe(context, user, request);
+                        } else if (path === '/api/notifications/push/unsubscribe' && request.method === 'POST') {
+                            response = await WebPushAPI.unsubscribe(context, user, request);
+                        } else if (path === '/api/notifications/push/test' && request.method === 'POST') {
+                            response = await WebPushAPI.sendTestNotification(context, user, request);
+                        }
+                    } else {
+                        response = new Response(JSON.stringify({ error: 'Authentication required' }), { 
+                            status: 401, 
+                            headers: { 'Content-Type': 'application/json' } 
+                        });
+                    }
+                }
+            }
+
         } catch (error) {
             if (error instanceof AuthorizationException) {
                 if (path === '/api/login/validate') {
@@ -244,41 +288,9 @@ const server = Bun.serve({
 
 
         return addCorsHeaders(response);
-    },
-    websocket: {
-        sendPings: true,                    // Intentar mantener activas las conexiones
-        idleTimeout: 960,                   // Cerrar conexiones inactivas después de 960 segundos
-
-        message(ws, message) {
-            if (message) {
-                const msg: ISubscriptionMessage = JSON.parse(message as string);
-                if (msg.type === 'subscribe') {
-                    notificationsService.subscribe(ws as ServerWebSocket, msg.user)
-                } else if (msg.type === 'unsubscribe') {
-                    notificationsService.unsubscribe(ws as ServerWebSocket, msg.user);
-                }
-            }
-        },
-        open(ws) {
-            console.debug('ws open')
-            console.debug('ws open - data :', ws.data);
-        },
-        close(ws, code, message) {
-            ws.unsubscribe(NOTIFICATIONS_SERVICE_NAME)
-            console.debug('ws close', code, message)
-        },
-        drain(ws) {
-            console.debug('ws drain', server.pendingWebSockets)
-        },
-        ping(ws, data) {
-            console.debug('ping')
-        },
-    },
+    }
 
 });
-
-// Activar notificaciones de tareas.
-const notificationsService = new NotificationsService(context, server);
 
 // Feed back consola
 console.log(`Servidor iniciado en ${server.url}`);

@@ -5,6 +5,7 @@ import { ApiService } from "./services/api-service";
 import { WODatabase } from "./services/database";
 import WOSynchronizer from "./services/synchronizer";
 import { NotificationsService } from "./services/NotificationsService";
+import { WebPushService } from "./services/WebPushService";
 import { DEFAULT_CLIENT_CONFIGURATION, IClientConfiguration } from "../application/model/IClientConfiguration";
 
 
@@ -28,6 +29,7 @@ export class Wappops {
     private _dbService: WODatabase;
     private _syncService: WOSynchronizer;
     private _notificationsService: NotificationsService | undefined = undefined;
+    private _webPushService: WebPushService | undefined = undefined;
 
     constructor() {
         this._getStoredData();
@@ -46,6 +48,10 @@ export class Wappops {
         this._dbService = new WODatabase();
         this._syncService = new WOSynchronizer(this);
         this._notificationsService = new NotificationsService(this);
+        this._webPushService = new WebPushService(this);
+        
+        // Listen for messages from Service Worker (push notifications)
+        this._setupServiceWorkerMessageHandler();
     }
 
     get configuration(): IClientConfiguration {
@@ -168,6 +174,13 @@ export class Wappops {
     }
 
     /**
+     * Devuelve el servicio de Web Push.
+     */
+    get webPush(): WebPushService | undefined {
+        return this._webPushService;
+    }
+
+    /**
      * Determina la URL de la API basada en el entorno de ejecución.
      * En desarrollo apunta directamente al servidor backend en puerto 3000.
      * En producción, usa el mismo origen que la aplicación.
@@ -207,6 +220,28 @@ export class Wappops {
         if (!this._deviceId && (window.location.protocol === "https:" || window.location.hostname === "localhost")) {
             this._deviceId = self.crypto.randomUUID();
             localStorage.setItem(DEVICE_ID_KEY, JSON.stringify(this._deviceId));
+        }
+    }
+
+    /**
+     * Setup Service Worker message handler for push notifications
+     */
+    private _setupServiceWorkerMessageHandler() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                console.log('🔔 [APP] Received message from Service Worker:', event.data);
+                
+                if (event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
+                    console.log('🔔 [APP] Processing push notification from SW:', event.data.notification);
+                    
+                    // Pass the notification to the NotificationsService for processing
+                    if (this._notificationsService) {
+                        this._notificationsService.handleNotification(event.data.notification);
+                    }
+                }
+            });
+            
+            console.log('🔔 [APP] Service Worker message handler registered');
         }
     }
 }

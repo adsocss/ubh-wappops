@@ -11,7 +11,15 @@ export default defineConfig({
       key: fs.readFileSync('../ztest/cert/private.key'),
       cert: fs.readFileSync('../ztest/cert/certificate.crt'),
     },
-    // Proxy disabled - client makes direct calls to backend
+    // Proxy API calls to backend server for development
+    proxy: {
+      '/api': {
+        target: 'https://localhost:3000',
+        changeOrigin: true,
+        secure: false, // For development with self-signed certificates
+        rewrite: (path) => path
+      }
+    },
     hmr: true, // Force hot module reload
   },
   plugins: [VitePWA({
@@ -70,6 +78,9 @@ export default defineConfig({
       clientsClaim: true,
       skipWaiting: true,
       
+      // ✅ Import custom push notification handlers
+      importScripts: ['push-handler.js'],
+      
       // ✅ Runtime caching for offline support
       runtimeCaching: [
         {
@@ -98,7 +109,7 @@ export default defineConfig({
     },
 
     devOptions: {
-      enabled: false,
+      enabled: true, // Enable VitePWA in development mode for testing
       navigateFallback: 'index.html',
       suppressWarnings: true,
       type: 'module',
