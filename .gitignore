@@ -77,3 +77,6 @@ public/pwa-*
 # Temporary files
 .tmp/
 temp/
+
+# Session persistence data
+data/api-sessions.json

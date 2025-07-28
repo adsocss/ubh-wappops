@@ -6,6 +6,8 @@ import type { IGTask } from "../pms/api/tasks/IGTask";
 import type { IRoom } from "../pms/database/centers/IRoom";
 import type { ICounterRecord } from "../pms/database/maintenance/ICounterRecord";
 import type Logger from "./logger";
+import { writeFile, readFile, exists } from "fs/promises";
+import { join } from "path";
 
 /**
  * Definición de la sesión de usuario en la API de Guest PMS.
@@ -14,6 +16,19 @@ export type Session = {
     username: string
     password: string
     tokens: IGTokens
+}
+
+/**
+ * Versión serializable de la sesión para persistencia
+ */
+interface SerializableSession {
+    username: string;
+    password: string;
+    tokens: {
+        accessToken: string;
+        refreshToken: string;
+        expirationDate: string; // ISO string format
+    };
 }
 
 /**
@@ -40,6 +55,7 @@ export class GuestAPIClient {
     private logger: Logger | undefined;
     private readonly maxRetries: number = 3;
     private readonly retryDelay: number = 2000; // 2 seconds
+    private readonly sessionsFilePath: string;
     
     // Circuit Breaker implementation
     private circuitBreakerState: CircuitBreakerState = CircuitBreakerState.CLOSED;
@@ -54,6 +70,10 @@ export class GuestAPIClient {
     // Health monitoring
     private healthCheckInterval: NodeJS.Timeout | null = null;
     private isHealthMonitoringActive = false;
+    
+    // Session persistence
+    private sessionsSaveInterval: NodeJS.Timeout | null = null;
+    private readonly SESSION_SAVE_INTERVAL_MS = 30000; // Save every 30 seconds
 
     /**
      * Constructor
@@ -63,7 +83,38 @@ export class GuestAPIClient {
     constructor(configuration: IApplicationConfiguration, logger: Logger | undefined = undefined) {
         this.url = configuration.pms.api.dataHost.toString();
         this.logger = logger;
+        this.sessionsFilePath = join(process.cwd(), 'data', 'api-sessions.json');
+        
+        // Initialize sessions from persistence (async but don't wait)
+        this.initializeSessions();
+        
         this.startHealthMonitoring();
+        this.startSessionsPersistence();
+    }
+
+    /**
+     * Initialize sessions asynchronously
+     */
+    private async initializeSessions(): Promise<void> {
+        try {
+            await this.ensureDataDirectory();
+            await this.loadSessions();
+        } catch (error) {
+            this.logger?.logError(`Failed to initialize sessions: ${error}`);
+        }
+    }
+
+    /**
+     * Ensure data directory exists
+     */
+    private async ensureDataDirectory(): Promise<void> {
+        const dataDir = join(process.cwd(), 'data');
+        try {
+            await Bun.write(join(dataDir, '.gitkeep'), ''); // Creates directory if it doesn't exist
+        } catch (error) {
+            // Directory might already exist, ignore error
+            this.logger?.logDebug(`Data directory setup: ${error}`);
+        }
     }
 
     /**
@@ -71,6 +122,9 @@ export class GuestAPIClient {
      */
     public destroy(): void {
         this.stopHealthMonitoring();
+        this.stopSessionsPersistence();
+        // Save sessions one final time before shutdown
+        this.saveSessions();
     }
 
     /**
@@ -138,6 +192,37 @@ export class GuestAPIClient {
     }
 
     /**
+     * Obtener estadísticas de sesiones
+     */
+    public getSessionsStats(): { total: number; valid: number; nearExpiry: number; expired: number } {
+        const now = new Date();
+        const fiveMinutesMs = 5 * 60 * 1000;
+        
+        let valid = 0;
+        let nearExpiry = 0;
+        let expired = 0;
+        
+        for (const session of this.sessions.values()) {
+            const timeDiff = session.tokens.expirationDate.getTime() - now.getTime();
+            
+            if (timeDiff <= 0) {
+                expired++;
+            } else if (timeDiff <= fiveMinutesMs) {
+                nearExpiry++;
+            } else {
+                valid++;
+            }
+        }
+        
+        return {
+            total: this.sessions.size,
+            valid,
+            nearExpiry,
+            expired
+        };
+    }
+
+    /**
      * Iniciar monitoreo de salud de la API
      */
     private startHealthMonitoring(): void {
@@ -169,6 +254,144 @@ export class GuestAPIClient {
             this.healthCheckInterval = null;
         }
         this.isHealthMonitoringActive = false;
+    }
+
+    /**
+     * Iniciar persistencia automática de sesiones
+     */
+    private startSessionsPersistence(): void {
+        this.sessionsSaveInterval = setInterval(() => {
+            this.cleanupExpiredSessions();
+            this.saveSessions();
+        }, this.SESSION_SAVE_INTERVAL_MS);
+        
+        this.logger?.logInfo('Session persistence started');
+    }
+
+    /**
+     * Detener persistencia automática de sesiones
+     */
+    private stopSessionsPersistence(): void {
+        if (this.sessionsSaveInterval) {
+            clearInterval(this.sessionsSaveInterval);
+            this.sessionsSaveInterval = null;
+        }
+        this.logger?.logInfo('Session persistence stopped');
+    }
+
+    /**
+     * Cargar sesiones desde el archivo de persistencia
+     */
+    private async loadSessions(): Promise<void> {
+        try {
+            const fileExists = await exists(this.sessionsFilePath);
+            if (!fileExists) {
+                this.logger?.logInfo('No sessions file found, starting with empty sessions');
+                return;
+            }
+
+            const data = await readFile(this.sessionsFilePath, 'utf-8');
+            const serializedSessions: SerializableSession[] = JSON.parse(data);
+            
+            let loadedCount = 0;
+            let validCount = 0;
+            
+            for (const serializedSession of serializedSessions) {
+                loadedCount++;
+                
+                // Validate session structure
+                if (!serializedSession.username || !serializedSession.tokens) {
+                    this.logger?.logWarning(`Skipping invalid session for user: ${serializedSession.username || 'unknown'}`);
+                    continue;
+                }
+
+                // Convert back to Session format
+                const session: Session = {
+                    username: serializedSession.username,
+                    password: serializedSession.password,
+                    tokens: {
+                        accessToken: serializedSession.tokens.accessToken,
+                        refreshToken: serializedSession.tokens.refreshToken,
+                        expirationDate: new Date(serializedSession.tokens.expirationDate)
+                    }
+                };
+
+                // Check if token is still valid (not expired)
+                const now = new Date();
+                if (session.tokens.expirationDate > now) {
+                    this.sessions.set(session.username, session);
+                    validCount++;
+                    this.logger?.logDebug(`Loaded valid session for user: ${session.username}`);
+                } else {
+                    this.logger?.logDebug(`Skipped expired session for user: ${session.username}`);
+                }
+            }
+            
+            this.logger?.logInfo(`Sessions loaded: ${validCount} valid out of ${loadedCount} total`);
+            
+        } catch (error) {
+            this.logger?.logError(`Failed to load sessions: ${error}`);
+            // Continue with empty sessions on error
+        }
+    }
+
+    /**
+     * Guardar sesiones al archivo de persistencia
+     */
+    private async saveSessions(): Promise<void> {
+        try {
+            // Ensure data directory exists
+            await this.ensureDataDirectory();
+
+            // Convert sessions to serializable format
+            const serializedSessions: SerializableSession[] = [];
+            
+            for (const [username, session] of this.sessions.entries()) {
+                // Only save sessions that are still valid or close to expiry
+                const now = new Date();
+                const timeDiffMs = session.tokens.expirationDate.getTime() - now.getTime();
+                const oneHourMs = 60 * 60 * 1000;
+                
+                // Save sessions that expire in more than -1 hour (allows for some grace period)
+                if (timeDiffMs > -oneHourMs) {
+                    serializedSessions.push({
+                        username: session.username,
+                        password: session.password,
+                        tokens: {
+                            accessToken: session.tokens.accessToken,
+                            refreshToken: session.tokens.refreshToken,
+                            expirationDate: session.tokens.expirationDate.toISOString()
+                        }
+                    });
+                }
+            }
+
+            await writeFile(this.sessionsFilePath, JSON.stringify(serializedSessions, null, 2));
+            this.logger?.logDebug(`Saved ${serializedSessions.length} sessions to ${this.sessionsFilePath}`);
+            
+        } catch (error) {
+            this.logger?.logError(`Failed to save sessions: ${error}`);
+        }
+    }
+
+    /**
+     * Limpiar sesiones expiradas de la memoria
+     */
+    private cleanupExpiredSessions(): void {
+        const now = new Date();
+        let cleanedCount = 0;
+        
+        for (const [username, session] of this.sessions.entries()) {
+            if (session.tokens.expirationDate <= now) {
+                this.sessions.delete(username);
+                cleanedCount++;
+                this.logger?.logDebug(`Removed expired session for user: ${username}`);
+            }
+        }
+        
+        if (cleanedCount > 0) {
+            this.logger?.logInfo(`Cleaned up ${cleanedCount} expired sessions`);
+        }
     }
 
     /**
@@ -369,6 +592,9 @@ export class GuestAPIClient {
                     tokens: tokens
                 });
 
+                // Save sessions immediately after successful login
+                this.saveSessions();
+
                 this.onSuccess(); // Circuit breaker success
                 return true;
             }
@@ -407,6 +633,10 @@ export class GuestAPIClient {
                 session.tokens = await response.json() as IGTokens;
                 session.tokens.expirationDate = new Date(session.tokens.expirationDate);
                 this.logger?.logInfo(`Token refreshed successfully for user: ${session.username}`);
+                
+                // Save sessions immediately after successful token refresh
+                this.saveSessions();
+                
                 this.onSuccess(); // Circuit breaker success
                 return true;
             } else {
