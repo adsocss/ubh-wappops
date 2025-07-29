@@ -14,9 +14,21 @@
   <link rel="icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/pwa-512x512.png" />
   
+  <!-- Critical CSS - preload for offline priority -->
+  <link rel="preload" href="/src/index.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/src/index.css"></noscript>
   <link rel="stylesheet" href="/src/index.css" />
 
   <script type="module" src="/src/components/app/ubh-shell"></script>
+  
+  <!-- Mobile Navigation Debug (only in development) -->
+  <script>
+    if (location.hostname === 'localhost' || location.hostname.includes('vite.')) {
+      const script = document.createElement('script');
+      script.src = '/mobile-nav-debug.js';
+      document.head.appendChild(script);
+    }
+  </script>
 </head>
 
 <style>
@@ -43,11 +55,23 @@
     width: 200px;
     height: 200px;
   }
+
+  /* Fallback for logo when offline */
+  #startup img[src*="pwa-512x512.png"] {
+    /* Ensure the logo image is cached and visible offline */
+    background: url('/pwa-512x512.png') no-repeat center center;
+    background-size: contain;
+  }
+
+  /* Hide broken image icon if image fails to load */
+  #startup img:not([src]), #startup img[src=""] {
+    opacity: 0;
+  }
 </style>
 
 <body>
   <div id="startup">
-    <img src="pwa-512x512.png" alt="UBH Logo" />
+    <img src="/pwa-512x512.png" alt="UBH Logo" onerror="this.style.display='none'" />
     <span>UBH Operaciones</span>
     <progress id="progress-bar" aria-label="Cargando aplicación"></progress>
   </div>

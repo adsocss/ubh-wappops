@@ -37,9 +37,9 @@ export default class UbhShell extends LitElement {
     @query("#aside")
     private menu!: SlDrawer | HTMLElement;
     @query("#sync-indicator")
-    private syncIndicator!: UbhBusy;
+    private syncIndicator?: UbhBusy;
     @query("#busy-indicator")
-    private busyIndicator!: UbhBusy;
+    private busyIndicator?: UbhBusy;
     @query("ubh-notifications-alert")
     private notificationsAlert!: UbhNotificationsAlert;
     @query("#notifications-panel")
@@ -59,6 +59,12 @@ export default class UbhShell extends LitElement {
     // private currentViewInstance?: UbhView | undefined = undefined;
     private autoLoginDone: boolean = false;
 
+    @state()
+    private isOffline: boolean = false;
+
+    @state()
+    private isInitializing: boolean = true;
+
     /* Monitor de redimensionamiento del documento */
     private resizeObserver: ResizeObserver | undefined = undefined;
 
@@ -72,7 +78,52 @@ export default class UbhShell extends LitElement {
         });
         this.resizeObserver.observe(document.body);
         window.location.hash = "#/";
-        this.autologin();
+        
+        // Enhanced mobile offline detection
+        this.isOffline = !navigator.onLine;
+        this.handleOfflineStatus();
+        
+        // Add mobile-specific offline detection
+        const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobileDevice) {
+            console.log('[Shell] Mobile device detected - enhanced offline handling');
+            
+            // Listen for mobile-specific network events
+            window.addEventListener('online', () => {
+                console.log('[Shell] Mobile came online');
+                this.isOffline = false;
+                this.requestUpdate();
+            });
+            
+            window.addEventListener('offline', () => {
+                console.log('[Shell] Mobile went offline');
+                this.isOffline = true;
+                this.requestUpdate();
+            });
+        }
+        
+        // Add safety timeout for initialization with mobile-specific handling
+        const initTimeout = setTimeout(() => {
+            if (this.isInitializing) {
+                console.warn('[Shell] Initialization timeout - forcing app to show');
+                console.warn('[Shell] Mobile offline status:', this.isOffline);
+                console.warn('[Shell] Navigator online:', navigator.onLine);
+                
+                // Force show app even if initialization incomplete
+                this.isInitializing = false;
+                
+                // If offline and no user, try to show emergency login
+                if (this.isOffline && !this.ctx.currentUser) {
+                    console.log('[Shell] Mobile offline - attempting emergency login setup');
+                }
+                
+                this.requestUpdate();
+            }
+        }, 6000); // Reduced to 6 seconds for mobile (was 8)
+        
+        this.autologin().finally(() => {
+            clearTimeout(initTimeout);
+        });
     }
 
     /* Determina si la vista a aplicar es para dispositivos móviles */
@@ -85,7 +136,17 @@ export default class UbhShell extends LitElement {
         this.ctx.currentUser = event.detail as IUser;
 
         await this.updateComplete;
-        this.busyIndicator.show();
+        
+        // MOBILE FIX: Safely access busyIndicator with null checks
+        console.log('[Shell] Login successful, showing busy indicator...');
+        if (this.busyIndicator?.show) {
+            this.busyIndicator.show();
+        } else {
+            console.warn('[Shell] busyIndicator not available during login, waiting...');
+            await this.updateComplete;
+            this.busyIndicator?.show();
+        }
+        
         try {
             await this.ctx.synchronizer.syncAll();
             this.ctx.synchronizer.startPeriodicTask();
@@ -98,9 +159,24 @@ export default class UbhShell extends LitElement {
             await new Promise(r => setTimeout(r, 2000));
 
             await this.setDefaultView();
-            this.busyIndicator.hide();
+            
+            // MOBILE FIX: Safely hide busyIndicator with null check
+            this.busyIndicator?.hide();
             this.requestUpdate();
         }
+    }
+
+    /*
+     * Handle offline status changes and setup event listeners
+     */
+    private handleOfflineStatus() {
+        const updateOfflineStatus = () => {
+            this.isOffline = !navigator.onLine;
+            this.requestUpdate();
+        };
+
+        window.addEventListener('online', updateOfflineStatus);
+        window.addEventListener('offline', updateOfflineStatus);
     }
 
     /*
@@ -108,36 +184,79 @@ export default class UbhShell extends LitElement {
      * almacenada en localStorage.
      */
     private async autologin() {
+        console.log('[Shell] Starting autologin process...');
+        
         if (this.autoLoginDone) {
+            console.log('[Shell] Autologin already completed');
             return;
         }
 
         const storedUser = localStorage.getItem(USER_KEY);
         if (!storedUser) {
+            console.log('[Shell] No stored user found - showing login');
+            this.isInitializing = false;
+            this.requestUpdate(); // Show login page if no stored user
             return;
         }
 
+        // If offline, skip API validation and use stored data
+        if (!navigator.onLine) {
+            console.log('[Shell] Offline mode - using stored user data');
+            try {
+                const user = JSON.parse(storedUser);
+                this.ctx.currentUser = user;
+                this.autoLoginDone = true;
+                this.isInitializing = false;
+                this.requestUpdate();
+                await this.setDefaultView();
+                console.log('[Shell] Offline autologin completed');
+            } catch (error) {
+                console.error('[Shell] Error parsing stored user data:', error);
+                this.isInitializing = false;
+                this.requestUpdate(); // Show login page
+            }
+            return;
+        }
+
+        console.log('[Shell] Online mode - validating session');
         await this.updateComplete;
 
         // Reset de vista inicial
         this._currentView = undefined;
         window.location.hash = "";
 
-        this.busyIndicator.show();
+        // MOBILE FIX: Safely access busyIndicator with null checks
+        console.log('[Shell] Showing busy indicator...');
+        if (this.busyIndicator?.show) {
+            this.busyIndicator.show();
+        } else {
+            console.warn('[Shell] busyIndicator not available yet, waiting...');
+            await this.updateComplete;
+            this.busyIndicator?.show();
+        }
+        
         try {
             await this.ctx.api.validateSession();
+            console.log('[Shell] Session validated successfully');
             this.autoLoginDone = true;
             await this.ctx.synchronizer.syncAll();
             this.ctx.synchronizer.startPeriodicTask();
+            console.log('[Shell] Synchronization completed');
         } catch (error) {
+            console.error('[Shell] Session validation failed:', error);
             // Si hay error, se asume que la sesión ha caducado
             this.logout();
         } finally {
-            // Retardo para dar tiempo a que el componente esté construido
-            await new Promise(r => setTimeout(r, 2000));
+            // Reduced delay - only wait for component to be ready
+            await new Promise(r => setTimeout(r, 500)); // Reduced from 2000ms to 500ms
+            console.log('[Shell] Completing autologin process...');
+            this.isInitializing = false;
             this.requestUpdate();
             await this.setDefaultView();
-            this.busyIndicator.hide();
+            
+            // MOBILE FIX: Safely hide busyIndicator with null check
+            this.busyIndicator?.hide();
+            console.log('[Shell] Autologin process completed');
         }
     }
 
@@ -145,12 +264,14 @@ export default class UbhShell extends LitElement {
     // TODO: Establecer vista por defecto según permisos del usuario
     private async setDefaultView() {
 
-        this.busyIndicator.show();
+        // MOBILE FIX: Safely access busyIndicator with null check
+        this.busyIndicator?.show();
 
         // Retardo para dar tiempo a la sincronización inicial
         await new Promise(r => setTimeout(r, 5000));
 
-        this.busyIndicator.hide();
+        // MOBILE FIX: Safely hide busyIndicator with null check
+        this.busyIndicator?.hide();
 
         if (this.ctx.currentUser) {
             window.location.hash = "#/tasks";
@@ -307,12 +428,43 @@ export default class UbhShell extends LitElement {
 
     // Visualizar shell o login
     protected render() {
+        // Show loading indicator while initializing
+        if (this.isInitializing) {
+            return html`
+                <div class="initializing">
+                    <ubh-busy message="Iniciando aplicación..." opaque></ubh-busy>
+                </div>
+            `;
+        }
+
+        // Mobile offline emergency fallback
+        if (this.isOffline && !this.ctx.currentUser) {
+            const storedUser = localStorage.getItem(USER_KEY);
+            if (storedUser) {
+                console.log('[Shell] Mobile offline - found stored user, attempting recovery');
+                try {
+                    this.ctx.currentUser = JSON.parse(storedUser);
+                    this.requestUpdate();
+                } catch (error) {
+                    console.error('[Shell] Failed to parse stored user:', error);
+                }
+            }
+        }
+
         let template: TemplateResult | undefined = undefined
         if (!this.ctx.currentUser) {
             template = this.renderLogin();
         } else {
-            if (this.syncDone) {
+            // For offline mode, show main view even if sync isn't done
+            if (this.syncDone || this.isOffline) {
                 template = this.renderMain();
+            } else {
+                // Still syncing - show loading
+                template = html`
+                    <div class="syncing">
+                        <ubh-busy message="Sincronizando datos..." opaque></ubh-busy>
+                    </div>
+                `;
             }
         }
 
@@ -407,7 +559,17 @@ export default class UbhShell extends LitElement {
     }
 
     private renderLogin() {
-        return html`<ubh-login @ubh-login=${this.handleLogin}></ubh-login>`;
+        return html`
+            ${this.isOffline ? html`
+                <div class="offline-banner">
+                    <sl-alert variant="warning" open>
+                        <sl-icon slot="icon" name="wifi-off"></sl-icon>
+                        Modo sin conexión - Algunas funciones pueden estar limitadas
+                    </sl-alert>
+                </div>
+            ` : nothing}
+            <ubh-login @ubh-login=${this.handleLogin}></ubh-login>
+        `;
     }
 
     private renderTasks() {
@@ -507,6 +669,36 @@ export default class UbhShell extends LitElement {
         #app-logo {
             height: 36px;
             width: auto;
+        }
+
+        .offline-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+
+        .offline-banner sl-alert {
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .initializing, .syncing {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            background: var(--sl-color-neutral-50);
+        }
+
+        .initializing ubh-busy, .syncing ubh-busy {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
     `;
 

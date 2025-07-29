@@ -85,9 +85,12 @@ export default class UbhTaskForm extends UbhComponent implements IClosable {
 
     /* Cerrar el formulario */
     public close() {
+        console.log('[TaskForm] Close requested, changed:', this._changed);
+        
         if (this._changed) {
             this.closeDialog?.show();
         } else {
+            console.log('[TaskForm] No changes, dispatching close event');
             this.dispatchEvent(new Event(EVT_CLOSE_DETAILS, { bubbles: true, composed: true }));
         }
     }
@@ -101,6 +104,7 @@ export default class UbhTaskForm extends UbhComponent implements IClosable {
 
     /* Acción de descartar cambios. Cierra el formulario */
     private discardChanges() {
+        console.log('[TaskForm] Discarding changes');
         this._changed = false;
         this.closeDialog?.hide();
         this.close();
@@ -108,6 +112,7 @@ export default class UbhTaskForm extends UbhComponent implements IClosable {
 
     /* Acción de guardar cambios */
     private save() {
+        console.log('[TaskForm] Save requested');
         this.closeDialog?.hide();
 
         this.busy?.show();
@@ -115,6 +120,7 @@ export default class UbhTaskForm extends UbhComponent implements IClosable {
         this.validationError = '';
         saveTask(this.ctx, this._value as ITask)
             .then(savedTask => {
+                console.log('[TaskForm] Task saved successfully:', savedTask.number);
                 this._value = { ...savedTask } as ITask;
                 this.closeDialog?.hide();
                 this._changed = false;
@@ -122,11 +128,21 @@ export default class UbhTaskForm extends UbhComponent implements IClosable {
             })
             .then(() => {
                 // Disparar evento de cambio para notificar que se ha guardado la tarea
+                console.log('[TaskForm] Dispatching form saved event');
                 this.dispatchEvent(new CustomEvent(EVT_FORM_SAVED, { bubbles: true, composed: true, detail: this._value }));
                 // Evento general de cambio de datos. Sin detalle, para indicar que los datos se han guardado.
                 this.dispatchEvent(new CustomEvent(EVT_DATA_CHANGED, { bubbles: true, composed: true }));
+                
+                // MOBILE FIX: Automatically close form after successful save on mobile
+                if (this.isMobile()) {
+                    console.log('[TaskForm] Mobile save completed - auto-closing form');
+                    setTimeout(() => {
+                        this.dispatchEvent(new Event(EVT_CLOSE_DETAILS, { bubbles: true, composed: true }));
+                    }, 500); // Small delay to allow UI to update
+                }
             })
             .catch(error => {
+                console.error('[TaskForm] Save failed:', error);
                 this.validationError = (error as Error).message;
                 this.errorDialog?.show();
             })

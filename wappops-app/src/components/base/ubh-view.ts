@@ -48,8 +48,14 @@ export default class UbhView extends UbhComponent implements IClosable {
 
     /* Abrir el panel de detalles de la vista */
     private openDetails() {
+        console.log('[UbhView] Opening details panel');
         if (this.detailsPanel) {
             this.detailsPanel.show();
+            
+            // MOBILE: Ensure drawer opens properly
+            if (this.isMobile()) {
+                console.log('[UbhView] Mobile details panel opened');
+            }
         }
     }
 
@@ -68,11 +74,27 @@ export default class UbhView extends UbhComponent implements IClosable {
 
     /* Tratar evento de la acción de cierre del panel de detalles de la vista */
     private handleCloseDetails(_event: Event) {
+        console.log('[UbhView] Close details requested');
+        
         if (this.dirtyElement) {
+            console.log('[UbhView] Has dirty element, calling close on it');
             this.dirtyElement.close();
         } else {
+            console.log('[UbhView] No dirty element, hiding details panel');
             if (this.detailsPanel) {
                 this.detailsPanel.hide();
+                
+                // MOBILE FIX: Ensure panel is fully closed and state is reset
+                if (this.isMobile()) {
+                    console.log('[UbhView] Mobile close - ensuring clean state');
+                    setTimeout(() => {
+                        // Force hide in case it didn't close properly
+                        if (this.detailsPanel && this.detailsPanel.open) {
+                            console.log('[UbhView] Force closing details panel');
+                            this.detailsPanel.open = false;
+                        }
+                    }, 100);
+                }
             }
         }
     }

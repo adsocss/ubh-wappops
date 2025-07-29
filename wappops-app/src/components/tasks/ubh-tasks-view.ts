@@ -31,12 +31,19 @@ export default class UbhTasksView extends UbhComponent {
 
     /* Tratar evento de selección de tarea */
     private handleTaskSelected(event: CustomEvent) {
-        this.form?.close();
-        if (!this.form?.changed) {
-            this.selectedTask = { ...event.detail } as ITask;
-        } else {
+        console.log('[TasksView] Task selected:', event.detail?.number);
+        
+        // Check if form has unsaved changes before proceeding
+        if (this.form?.changed) {
+            console.log('[TasksView] Form has changes - queuing task selection');
             this.selectedPending = { ...event.detail } as ITask;
+            // Don't close the form if there are changes - let user decide
+            return;
         }
+        
+        // No changes in form, proceed with task selection
+        this.selectedTask = { ...event.detail } as ITask;
+        console.log('[TasksView] Task selection completed:', this.selectedTask?.number);
     }
 
     /* Tratar evento de crear nueva tarea */
@@ -46,22 +53,52 @@ export default class UbhTasksView extends UbhComponent {
 
     /* Tratar evento de recarga de la lista */
     private handleListReload(_event: Event) {
+        console.log('[TasksView] List reload requested');
         this.selectedTask = undefined;
+        this.selectedPending = undefined;
     }
 
     /* Tratar evento de guardar del formulario (cuando se guarda) */
     private handleFormSaved(event: CustomEvent) {
+        console.log('[TasksView] Form saved event received');
+        
         if (event.target instanceof UbhTaskForm && event.detail) {
             this.list?.updateItem(event.detail as ITask);
+            
+            // MOBILE FIX: After saving, prepare for clean navigation back to list
+            if (this.isMobile()) {
+                console.log('[TasksView] Mobile task saved - preparing for navigation');
+                // Don't clear selectedTask immediately - wait for close event
+                // This ensures the form has time to process the save completion
+            }
         }
     }
 
     /* Tratar evento de cierre del formulario */
     private handleFormClosed(_event: Event) {
+        console.log('[TasksView] Form closed event received');
+        
         if (this.selectedPending) {
+            console.log('[TasksView] Switching to pending task:', this.selectedPending.number);
             this.selectedTask = { ...this.selectedPending };
             this.selectedPending = undefined;
+        } else {
+            // CRITICAL FIX: Clear selected task to prevent blank page on mobile
+            console.log('[TasksView] Clearing selected task for mobile navigation');
+            this.selectedTask = undefined;
+            
+            // Ensure mobile drawer is properly closed
+            if (this.isMobile()) {
+                const view = this.shadowRoot?.querySelector('ubh-view');
+                const detailsDrawer = view?.shadowRoot?.querySelector('#details') as any;
+                if (detailsDrawer && detailsDrawer.hide) {
+                    console.log('[TasksView] Force closing mobile details drawer');
+                    detailsDrawer.hide();
+                }
+            }
         }
+        
+        this.requestUpdate();
     }
 
     /* Actualizar los parámetros de configuración de la lista */

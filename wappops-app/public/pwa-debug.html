@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Debug & Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .log { background: #f8f9fa; padding: 10px; border-radius: 3px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; font-family: monospace; }
+        #results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 WAPPOPS PWA Debug & Test Suite</h1>
+    <p>This page helps diagnose PWA registration and caching issues.</p>
+
+    <div class="test-section">
+        <h2>🔍 Quick Diagnostics</h2>
+        <button onclick="runQuickDiagnostics()">Run Quick Diagnostics</button>
+        <button onclick="clearAllCaches()">Clear All Caches</button>
+        <button onclick="unregisterAllSW()">Unregister All Service Workers</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Detailed Tests</h2>
+        <button onclick="testServiceWorkerRegistration()">Test SW Registration</button>
+        <button onclick="testCacheStatus()">Check Cache Status</button>
+        <button onclick="testOfflineCSS()">Test CSS Offline</button>
+        <button onclick="testNetworkStatus()">Test Network Status</button>
+    </div>
+
+    <div class="test-section">
+        <h2>🛠️ Manual Actions</h2>
+        <button onclick="forceRefresh()">Force Refresh</button>
+        <button onclick="goOfflineTest()">Simulate Offline</button>
+        <button onclick="testPWAInstallability()">Test PWA Install</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        let logContainer;
+
+        function log(message, type = 'info') {
+            if (!logContainer) {
+                logContainer = document.createElement('div');
+                logContainer.className = 'log';
+                logContainer.id = 'log-output';
+                
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '<h3>📋 Test Results & Logs</h3>';
+                resultsDiv.appendChild(logContainer);
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logContainer.textContent += logEntry;
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            console.log(`[PWA Debug] ${logEntry.trim()}`);
+        }
+
+        async function runQuickDiagnostics() {
+            log('Starting quick diagnostics...', 'info');
+            
+            // Detect environment
+            const isDev = window.location.hostname === 'localhost' || window.location.hostname.includes('dev');
+            log(`Environment: ${isDev ? 'Development' : 'Production'}`, 'info');
+            
+            // 1. Service Worker Support
+            if ('serviceWorker' in navigator) {
+                log('✅ Service Worker API supported', 'success');
+                
+                try {
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration) {
+                        log(`✅ Service Worker registered: ${registration.scope}`, 'success');
+                        log(`   Script URL: ${registration.active?.scriptURL || 'N/A'}`, 'info');
+                        log(`   Active: ${registration.active ? 'YES' : 'NO'}`, 'info');
+                        log(`   Installing: ${registration.installing ? 'YES' : 'NO'}`, 'info');
+                        log(`   Waiting: ${registration.waiting ? 'YES' : 'NO'}`, 'info');
+                        
+                        if (isDev && registration.active?.scriptURL.includes('dev-sw')) {
+                            log('ℹ️ Using development service worker (expected in dev mode)', 'info');
+                        }
+                    } else {
+                        log('⚠️ No Service Worker registration found', 'warning');
+                    }
+                } catch (error) {
+                    log(`❌ Error checking SW registration: ${error.message}`, 'error');
+                }
+            } else {
+                log('❌ Service Worker API not supported', 'error');
+            }
+
+            // 2. Cache API Support
+            if ('caches' in window) {
+                log('✅ Cache API supported', 'success');
+                
+                try {
+                    const cacheNames = await caches.keys();
+                    log(`📦 Found ${cacheNames.length} caches: ${cacheNames.join(', ')}`, 'info');
+                } catch (error) {
+                    log(`❌ Error checking caches: ${error.message}`, 'error');
+                }
+            } else {
+                log('❌ Cache API not supported', 'error');
+            }
+
+            // 3. PWA Manifest
+            const manifestLink = document.querySelector('link[rel="manifest"]');
+            if (manifestLink) {
+                log(`✅ PWA Manifest found: ${manifestLink.href}`, 'success');
+            } else {
+                log('⚠️ No PWA Manifest found', 'warning');
+            }
+
+            // 4. Network Status
+            log(`🌐 Navigator online: ${navigator.onLine}`, 'info');
+            
+            log('Quick diagnostics completed!', 'success');
+        }
+
+        async function testServiceWorkerRegistration() {
+            log('Testing Service Worker registration...', 'info');
+            
+            try {
+                // Check if there's already a registration
+                let registration = await navigator.serviceWorker.getRegistration();
+                
+                if (registration) {
+                    log(`Found existing registration: ${registration.scope}`, 'info');
+                    
+                    // Test registration state
+                    if (registration.active) {
+                        log('✅ Service Worker is active', 'success');
+                        log(`   Script URL: ${registration.active.scriptURL}`, 'info');
+                        log(`   State: ${registration.active.state}`, 'info');
+                    }
+                    
+                    if (registration.installing) {
+                        log('🔄 Service Worker is installing...', 'info');
+                    }
+                    
+                    if (registration.waiting) {
+                        log('⏳ Service Worker is waiting...', 'warning');
+                    }
+                    
+                    // Test update
+                    try {
+                        await registration.update();
+                        log('✅ Successfully checked for SW updates', 'success');
+                    } catch (updateError) {
+                        log(`⚠️ Update check failed: ${updateError.message}`, 'warning');
+                    }
+                    
+                } else {
+                    log('❌ No Service Worker registration found', 'error');
+                    
+                    // Try to register manually
+                    try {
+                        log('Attempting manual registration...', 'info');
+                        registration = await navigator.serviceWorker.register('/sw.js');
+                        log(`✅ Manual registration successful: ${registration.scope}`, 'success');
+                    } catch (regError) {
+                        log(`❌ Manual registration failed: ${regError.message}`, 'error');
+                    }
+                }
+                
+            } catch (error) {
+                log(`❌ Service Worker test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCacheStatus() {
+            log('Testing cache status...', 'info');
+            
+            try {
+                const cacheNames = await caches.keys();
+                log(`Found ${cacheNames.length} cache(s)`, 'info');
+                
+                for (const cacheName of cacheNames) {
+                    const cache = await caches.open(cacheName);
+                    const requests = await cache.keys();
+                    log(`📦 Cache "${cacheName}": ${requests.length} entries`, 'info');
+                    
+                    // Show first few entries
+                    const sampleEntries = requests.slice(0, 5);
+                    for (const request of sampleEntries) {
+                        log(`   - ${request.url}`, 'info');
+                    }
+                    if (requests.length > 5) {
+                        log(`   ... and ${requests.length - 5} more entries`, 'info');
+                    }
+                }
+                
+                // Test specific cache lookups
+                const criticalFiles = ['/', '/index.html'];
+                
+                // Check for service worker (dev vs prod)
+                const swFiles = ['/sw.js', '/dev-sw.js'];
+                let swFound = false;
+                
+                for (const swFile of swFiles) {
+                    const response = await caches.match(swFile);
+                    if (response) {
+                        log(`✅ Service Worker "${swFile}" is cached`, 'success');
+                        swFound = true;
+                        break;
+                    }
+                }
+                
+                if (!swFound) {
+                    // Check if SW is registered (might not be cached in dev mode)
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration && registration.active) {
+                        log(`ℹ️ Service Worker is active but not cached (normal in dev mode): ${registration.active.scriptURL}`, 'info');
+                    } else {
+                        log(`⚠️ No Service Worker found in cache or registration`, 'warning');
+                    }
+                }
+                
+                // Test other critical files
+                for (const file of criticalFiles) {
+                    const response = await caches.match(file);
+                    if (response) {
+                        log(`✅ "${file}" is cached`, 'success');
+                    } else {
+                        log(`⚠️ "${file}" is NOT cached`, 'warning');
+                    }
+                }
+                
+            } catch (error) {
+                log(`❌ Cache test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testOfflineCSS() {
+            log('Testing CSS offline availability...', 'info');
+            
+            // Check if CSS is loaded
+            const styleSheets = document.styleSheets;
+            log(`Found ${styleSheets.length} stylesheets`, 'info');
+            
+            // Check for Shoelace variables
+            const rootStyles = getComputedStyle(document.documentElement);
+            const shoelaceVars = [
+                '--sl-color-primary-600',
+                '--sl-spacing-medium',
+                '--sl-border-radius-medium',
+                '--sl-font-size-medium'
+            ];
+            
+            let shoelaceCount = 0;
+            for (const varName of shoelaceVars) {
+                const value = rootStyles.getPropertyValue(varName);
+                if (value && value.trim()) {
+                    shoelaceCount++;
+                    log(`✅ ${varName}: ${value.trim()}`, 'success');
+                } else {
+                    log(`❌ ${varName}: NOT FOUND`, 'error');
+                }
+            }
+            
+            if (shoelaceCount === shoelaceVars.length) {
+                log('✅ All Shoelace variables are available', 'success');
+            } else {
+                log(`⚠️ Only ${shoelaceCount}/${shoelaceVars.length} Shoelace variables found`, 'warning');
+            }
+            
+            // Test CSS cache
+            try {
+                const cssCache = await caches.open('css-styles');
+                const cssRequests = await cssCache.keys();
+                log(`CSS cache contains ${cssRequests.length} entries`, 'info');
+                
+                for (const request of cssRequests) {
+                    if (request.url.includes('.css')) {
+                        log(`   CSS file: ${request.url}`, 'info');
+                    }
+                }
+            } catch (error) {
+                log(`⚠️ Could not check CSS cache: ${error.message}`, 'warning');
+            }
+        }
+
+        function testNetworkStatus() {
+            log('Testing network status...', 'info');
+            
+            log(`Online status: ${navigator.onLine}`, 'info');
+            log(`Connection type: ${navigator.connection ? navigator.connection.effectiveType : 'unknown'}`, 'info');
+            
+            // Test network connectivity
+            fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                .then(() => log('✅ Network connectivity test passed', 'success'))
+                .catch(() => log('❌ Network connectivity test failed', 'error'));
+            
+            // Add network event listeners
+            window.addEventListener('online', () => log('🌐 Network came online', 'success'));
+            window.addEventListener('offline', () => log('📱 Network went offline', 'warning'));
+        }
+
+        async function clearAllCaches() {
+            log('Clearing all caches...', 'info');
+            
+            try {
+                const cacheNames = await caches.keys();
+                const deletePromises = cacheNames.map(name => caches.delete(name));
+                await Promise.all(deletePromises);
+                log(`✅ Cleared ${cacheNames.length} cache(s)`, 'success');
+            } catch (error) {
+                log(`❌ Failed to clear caches: ${error.message}`, 'error');
+            }
+        }
+
+        async function unregisterAllSW() {
+            log('Unregistering all service workers...', 'info');
+            
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                const unregisterPromises = registrations.map(reg => reg.unregister());
+                await Promise.all(unregisterPromises);
+                log(`✅ Unregistered ${registrations.length} service worker(s)`, 'success');
+            } catch (error) {
+                log(`❌ Failed to unregister service workers: ${error.message}`, 'error');
+            }
+        }
+
+        function forceRefresh() {
+            log('Forcing page refresh...', 'info');
+            window.location.reload(true);
+        }
+
+        function goOfflineTest() {
+            log('Simulating offline mode...', 'warning');
+            log('Open DevTools > Network tab and check "Offline" to test offline functionality', 'info');
+        }
+
+        function testPWAInstallability() {
+            log('Testing PWA installability...', 'info');
+            
+            if ('serviceWorker' in navigator && 'PushManager' in window) {
+                log('✅ PWA prerequisites met', 'success');
+            } else {
+                log('❌ PWA prerequisites not met', 'error');
+            }
+            
+            // Check for install prompt
+            window.addEventListener('beforeinstallprompt', (e) => {
+                log('✅ PWA install prompt available', 'success');
+            });
+        }
+
+        // Auto-run diagnostics on page load
+        window.addEventListener('load', () => {
+            setTimeout(runQuickDiagnostics, 1000);
+        });
+    </script>
+</body>
+</html>

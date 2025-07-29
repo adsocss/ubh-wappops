@@ -11,37 +11,52 @@ import { registerSW } from 'virtual:pwa-register';
 export class PwaBadge extends LitElement {
 
     @property({ type: Number })
-    private _period = 0 // Periodic update checks disabled by default
+    private _period: number = 0 // Periodic update checks disabled by default
     
     @property({ type: Boolean })
-    private _swActivated = false
+    private _swActivated: boolean = false
     
     @state()
-    private _needRefresh = false
+    private _needRefresh: boolean = false
     
     @property()
-    private _updateServiceWorker: undefined | ((reloadPage?: boolean) => Promise<void>)
+    private _updateServiceWorker: undefined | ((reloadPage?: boolean) => Promise<void>) = undefined
 
     firstUpdated() {
-        this._updateServiceWorker = registerSW({
-            immediate: true,
-            // Silent updates - no user interaction required
-            onOfflineReady: () => {
-                console.log('[PWA Update Manager] App ready to work offline');
-            },
-            onNeedRefresh: () => {
-                console.log('[PWA Update Manager] New version available, applying silent update...');
-                console.log('[PWA Update Manager] Platform manifest handles single instance behavior');
-                this._needRefresh = true;
-                // Auto-update silently without showing any alerts or UI
-                // Platform handles instance coordination automatically
-                this._refreshApp();
-            },
-            onRegisteredSW: this._onRegisteredSW,
-            onRegisterError: (error) => {
-                console.error('[PWA Update Manager] Service Worker registration failed:', error);
-            }
-        })
+        // Ensure component is fully initialized before registering service worker
+        setTimeout(() => {
+            this._initializePWA();
+        }, 100); // Small delay to ensure all properties are initialized
+    }
+
+    private _initializePWA() {
+        console.log('[PWA Update Manager] Initializing PWA service worker...');
+        
+        try {
+            this._updateServiceWorker = registerSW({
+                immediate: true,
+                // Silent updates - no user interaction required
+                onOfflineReady: () => {
+                    console.log('[PWA Update Manager] App ready to work offline');
+                },
+                onNeedRefresh: () => {
+                    console.log('[PWA Update Manager] New version available, applying silent update...');
+                    console.log('[PWA Update Manager] Platform manifest handles single instance behavior');
+                    this._needRefresh = true;
+                    // Auto-update silently without showing any alerts or UI
+                    // Platform handles instance coordination automatically
+                    this._refreshApp();
+                },
+                onRegisteredSW: this._onRegisteredSW.bind(this),
+                onRegisterError: (error) => {
+                    console.error('[PWA Update Manager] Service Worker registration failed:', error);
+                }
+            });
+            
+            console.log('[PWA Update Manager] Service worker registration initiated successfully');
+        } catch (error) {
+            console.error('[PWA Update Manager] Failed to initialize PWA:', error);
+        }
     }
 
     protected render() {
@@ -64,7 +79,15 @@ export class PwaBadge extends LitElement {
     }
 
     private _onRegisteredSW(swUrl: string, r?: ServiceWorkerRegistration) {
-        if (this._period <= 0) return
+        console.log('[PWA Update Manager] Service worker registered:', swUrl);
+        console.log('[PWA Update Manager] Period setting:', this._period);
+        
+        // Defensive check for _period property
+        if (!this._period || this._period <= 0) {
+            console.log('[PWA Update Manager] Periodic sync disabled (period = 0)');
+            return;
+        }
+        
         if (r?.active?.state === 'activated') {
             this._swActivated = true
             this._registerPeriodicSync(swUrl, r)
